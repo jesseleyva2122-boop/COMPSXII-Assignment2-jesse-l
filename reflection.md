@@ -1,0 +1,17 @@
+# Memory Manager Reflection
+
+## Memory Leak Observations
+
+The memory leak in the inventory program was in `memory_leak_demo()`. Inside the loop, `malloc(1000 * sizeof(int))` allocated space for 1,000 integers on every iteration. The demonstration did not call `free(temp_item)` before moving to the next iteration. Once the pointer was replaced on the next pass, the previous block was no longer reachable, so the program could not reuse it while running. With 1,000 iterations and four-byte integers, that is about 4,000,000 bytes, or roughly 3.9 MB, leaked during one call. If this kind of code ran repeatedly 1,000 times, memory use would continue climbing. On a server running for days, a leak like this could eventually consume large amounts of RAM, cause slowdowns, increase swapping, make allocations fail, or crash the process. In `memory_leak_fixed()`, I added `free(temp_item)` after the temporary value is used. I also set the pointer to `NULL` afterward. The important fix is `free()`, because it returns the allocated block to the allocator during every loop iteration. This prevents the fixed loop from accumulating unreachable allocations. The exercise showed me that in C, every successful allocation needs a clear cleanup point.
+
+## Python vs C Memory Management
+
+The biggest difference between C and Python is how much memory bookkeeping C makes the programmer perform directly. In Python, I can create `inventory = []`, append items, and remove items without calculating allocation sizes. In this C program, I had to use `malloc()` to reserve memory for the item ID and quantity arrays, calculate sizes with `sizeof(int)`, and check allocations against `NULL`. When the inventory grew, I had to use `realloc()`. I used a temporary pointer for each `realloc()` so the original allocation would still be available if resizing failed. I also had to call `free()` when memory was no longer needed. After freeing `player_health`, I set it to `NULL` and checked it before dereferencing it to prevent use of a dangling pointer.
+
+Python handles most of these tasks automatically. CPython primarily uses reference counting, meaning it keeps track of how many references point to an object. When references are removed, the count decreases, and an object whose count reaches zero can normally be reclaimed. Python also uses a cyclic garbage collector because reference counting alone cannot clean up unreachable groups of objects that still reference one another. The collector tracks certain container objects and periodically looks for unreachable reference cycles. This means Python programmers usually do not manually allocate, resize, track, and free the memory behind a list.
+
+## Garbage Collection Trade-offs
+
+Automatic garbage collection improves safety, but it has a cost. Python must store bookkeeping information such as reference counts and garbage-collector tracking data. Updating those counts and periodically searching tracked objects for unreachable cycles consumes CPU time and adds memory overhead. Collection work can also happen at times the programmer did not explicitly choose.
+
+A systems programmer may still choose C because operating systems and embedded firmware often need tight control over memory, low runtime overhead, and predictable behavior. C lets the programmer control when memory is allocated and released without requiring a garbage-collection runtime. The trade-off is greater responsibility because mistakes can cause leaks, dangling pointers, double frees, and crashes.
